@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Два стеклянных шарика — Задача</title>
+<meta name="description" content="Интерактивная головоломка: найди критический этаж за минимум бросков двумя стеклянными шариками"/>
+<meta property="og:title" content="Два стеклянных шарика"/>
+<meta property="og:description" content="Классическая задача про два яйца — теперь в виде игры. Сможешь найти оптимальную стратегию?"/>
+<meta property="og:type" content="website"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>"/>
+<style>
+  html, body, #root { margin:0; padding:0; min-height:100vh; background:#060614; }
+  body { overflow-x: hidden; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-type="module">
+const { useState, useCallback, useRef, useMemo } = React;
+
+/* ── Optimal solver (DP) ───────────────────────────── */
+function calcOptimal(n, b) {
+  const dp = Array.from({ length: b + 1 }, () => Array(n + 1).fill(Infinity));
+  for (let i = 0; i <= b; i++) dp[i][0] = 0;
+  for (let f = 1; f <= n; f++) dp[1][f] = f;
+  for (let bb = 2; bb <= b; bb++)
+    for (let f = 1; f <= n; f++)
+      for (let x = 1; x <= f; x++)
+        dp[bb][f] = Math.min(dp[bb][f], 1 + Math.max(dp[bb - 1][x - 1], dp[bb][f - x]));
+  return dp[b][n];
+}
+
+/* ── Strategy evaluator ────────────────────────────── */
+function evaluateStrategy(drops, floors) {
+  const probes = [];
+  for (const d of drops) { probes.push(d.floor); if (d.broke) break; }
+  const sorted = [...new Set(probes)].sort((a, b) => a - b);
+  const pts = [0, ...sorted];
+  const gaps = [];
+  for (let i = 1; i < pts.length; i++) gaps.push(pts[i] - pts[i - 1]);
+  let worst = 0;
+  for (let i = 0; i < gaps.length; i++) worst = Math.max(worst, i + 1 + gaps[i] - 1);
+  const top = sorted[sorted.length - 1];
+  if (top < floors && gaps.length >= 2) {
+    const delta = gaps[gaps.length - 1] - gaps[gaps.length - 2];
+    let nextGap = gaps[gaps.length - 1] + delta;
+    let f = top, pc = sorted.length;
+    while (f < floors) {
+      const step = Math.max(1, Math.round(nextGap));
+      f = Math.min(f + step, floors); pc++;
+      worst = Math.max(worst, pc + Math.min(step, floors - (f - step)) - 1);
+      nextGap += delta; if (nextGap < 1) nextGap = 1;
+    }
+  }
+  return worst;
+}
+
+/* ── CSS ───────────────────────────────────────────── */
+const STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&family=Anybody:wght@800;900&display=swap');
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#2a2a4a transparent}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#2a2a4a;border-radius:4px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+@keyframes twinkle{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes windowGlow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+@keyframes dropBall{
+  0%{transform:translateY(-60px);opacity:0}
+  15%{opacity:1}
+  70%{transform:translateY(0)}
+  85%{transform:translateY(-8px)}
+  100%{transform:translateY(0)}
+}
+@keyframes smash{
+  0%{transform:scale(1);opacity:1}
+  50%{transform:scale(1.4);opacity:.6}
+  100%{transform:scale(0) rotate(90deg);opacity:0}
+}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
+`;
+const FN = "'Outfit',sans-serif";
+const MN = "'JetBrains Mono',monospace";
+
+/* ── Ball SVG ──────────────────────────────────────── */
+function Ball({ broken, size = 28, style }) {
+  if (broken)
+    return (
+      <svg width={size} height={size} viewBox="0 0 28 28" style={style}>
+        <path d="M6 18l5-7-3 3 5-9-2.5 7 4-3.5-2.5 7 6-3.5-4 1 6-1" fill="none" stroke="#666" strokeWidth="1.2" opacity=".5"/>
+        <circle cx="8" cy="22" r="2.5" fill="#888" opacity=".35"/>
+        <circle cx="16" cy="24" r="1.8" fill="#999" opacity=".25"/>
+        <circle cx="20" cy="21" r="2" fill="#888" opacity=".3"/>
+      </svg>
+    );
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" style={style}>
+      <defs>
+        <radialGradient id={`bG${size}`} cx="38%" cy="32%" r="50%">
+          <stop offset="0%" stopColor="#fff" stopOpacity=".9"/>
+          <stop offset="30%" stopColor="#e4f0ff" stopOpacity=".7"/>
+          <stop offset="70%" stopColor="#7dbde8" stopOpacity=".45"/>
+          <stop offset="100%" stopColor="#4a9ad4" stopOpacity=".25"/>
+        </radialGradient>
+      </defs>
+      <circle cx="14" cy="14" r="12" fill={`url(#bG${size})`} stroke="#6aadd6" strokeWidth=".8"/>
+      <ellipse cx="10" cy="10" rx="3.5" ry="2.5" fill="#fff" opacity=".55" transform="rotate(-20 10 10)"/>
+    </svg>
+  );
+}
+
+/* ── Spoiler blur ───────────────────────────────────── */
+function Spoiler({ children, label = "Нажми, чтобы раскрыть" }) {
+  const [clicked, setClicked] = useState(false);
+  return (
+    <div
+      onClick={() => setClicked(true)}
+      style={{
+        position: "relative", cursor: "pointer",
+        borderRadius: 11, overflow: "hidden",
+      }}
+    >
+      <div style={{
+        filter: "blur(8px)",
+        pointerEvents: "none",
+        userSelect: "none",
+      }}>
+        {children}
+      </div>
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "rgba(8,8,24,.4)",
+        borderRadius: 11, zIndex: 2,
+      }}>
+        {!clicked ? (
+          <>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>🔒</div>
+            <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, fontWeight: 600 }}>{label}</div>
+          </>
+        ) : (
+          <div style={{
+            animation: "fadeIn .3s ease-out",
+            textAlign: "center", padding: "0 16px",
+          }}>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>⏳</div>
+            <div style={{ fontSize: 13, color: "#ccc", fontFamily: FN, fontWeight: 700, marginBottom: 6 }}>
+              Пока рано смотреть!
+            </div>
+            <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, lineHeight: 1.5 }}>
+              Ждите пост с решением в Telegram-канале
+            </div>
+            <a
+              href="https://t.me/mustafin_tech"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{
+                display: "inline-block", marginTop: 8,
+                background: "linear-gradient(135deg,#2AABEE,#229ED9)",
+                color: "#fff", fontSize: 12, fontWeight: 700,
+                fontFamily: FN, padding: "8px 20px", borderRadius: 8,
+                textDecoration: "none", transition: "transform .12s",
+              }}
+              onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"}
+              onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+            >✈️ @mustafin_tech</a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Helpers ────────────────────────────────────────── */
+function newRound() {
+  const floors = 30 + Math.floor(Math.random() * 71);
+  const critical = 1 + Math.floor(Math.random() * floors);
+  return { floors, critical };
+}
+function isSolved(drops, critical) {
+  if (!drops.some(d => d.floor === critical && d.broke)) return false;
+  if (critical === 1) return true;
+  return drops.some(d => d.floor === critical - 1 && !d.broke);
+}
+
+/* ── Stars background ──────────────────────────────── */
+function Stars() {
+  const stars = useMemo(() =>
+    Array.from({ length: 40 }, (_, i) => ({
+      x: Math.random() * 100,
+      y: Math.random() * 60,
+      s: .5 + Math.random() * 1.5,
+      d: 1 + Math.random() * 4,
+      o: .2 + Math.random() * .6,
+    })), []);
+  return (
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+      {stars.map((s, i) => (
+        <div key={i} style={{
+          position: "absolute", left: `${s.x}%`, top: `${s.y}%`,
+          width: s.s, height: s.s, borderRadius: "50%",
+          background: "#fff", opacity: s.o,
+          animation: `twinkle ${s.d}s ease-in-out infinite`,
+          animationDelay: `${Math.random() * 3}s`,
+        }} />
+      ))}
+      <div style={{
+        position: "absolute", right: "8%", top: "5%",
+        width: 28, height: 28, borderRadius: "50%",
+        background: "radial-gradient(circle at 35% 35%, #ffeedd, #eedd99)",
+        boxShadow: "0 0 20px 8px rgba(255,238,180,.12)",
+        opacity: .7,
+      }} />
+    </div>
+  );
+}
+
+/* ── Building ──────────────────────────────────────── */
+function Building({ floors, drops, lo, hi, lastDrop }) {
+  const floorH = Math.max(16, Math.min(36, 480 / floors));
+  const containerRef = useRef(null);
+  const WINDOWS_PER_FLOOR = 5;
+
+  const getStatus = (f) => {
+    const d = drops.find(d => d.floor === f);
+    if (d) return d.broke ? "broke" : "safe";
+    if (f < lo || f > hi) return "excluded";
+    return "unknown";
+  };
+
+  const windowColor = (status) => {
+    switch (status) {
+      case "broke": return { bg: "#ff3030", glow: "rgba(255,60,40,.5)", border: "#ff5050" };
+      case "safe": return { bg: "#30dd60", glow: "rgba(50,220,100,.4)", border: "#50ff80" };
+      case "excluded": return { bg: "#0a0a18", glow: "none", border: "#1a1a30" };
+      default: return { bg: "#1a2a50", glow: "rgba(30,60,120,.25)", border: "#2a3a60" };
+    }
+  };
+
+  return (
+    <div style={{
+      width: "100%", maxWidth: 380, height: 540, position: "relative",
+      borderRadius: 16, overflow: "hidden",
+      background: "linear-gradient(180deg, #020810 0%, #081428 40%, #0a1830 70%, #0c1a28 100%)",
+      border: "1px solid #1a2a44",
+    }}>
+      <Stars />
+      <div ref={containerRef} style={{
+        position: "absolute", inset: 0,
+        overflowY: "auto", overflowX: "hidden",
+        display: "flex", flexDirection: "column",
+        alignItems: "center",
+        paddingTop: 20, paddingBottom: 40,
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: -2, position: "relative", zIndex: 2 }}>
+          <div style={{ width: 2, height: 18, background: "linear-gradient(180deg, #ff3030, #666)", borderRadius: 1 }} />
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ff3030", marginTop: -2, boxShadow: "0 0 8px rgba(255,50,50,.6)" }} />
+          <div style={{ height: 8, width: 2, background: "#555" }} />
+          <div style={{
+            width: 0, height: 0,
+            borderLeft: "100px solid transparent",
+            borderRight: "100px solid transparent",
+            borderBottom: "20px solid #2a3050",
+          }} />
+          <div style={{
+            width: 220, height: 6,
+            background: "linear-gradient(180deg, #3a4060, #2a3050)",
+            borderRadius: "2px 2px 0 0",
+            boxShadow: "0 -1px 8px rgba(0,0,0,.3)",
+          }} />
+        </div>
+
+        <div style={{
+          width: 200, position: "relative",
+          background: "linear-gradient(90deg, #1a2040 0%, #222848 20%, #262e52 50%, #222848 80%, #1a2040 100%)",
+          boxShadow: "4px 0 20px rgba(0,0,0,.4), -4px 0 20px rgba(0,0,0,.4), inset 2px 0 8px rgba(255,255,255,.02), inset -2px 0 8px rgba(255,255,255,.02)",
+          borderLeft: "3px solid #2a3258",
+          borderRight: "3px solid #2a3258",
+        }}>
+          {Array.from({ length: floors }, (_, i) => {
+            const f = floors - i;
+            const status = getStatus(f);
+            const wc = windowColor(status);
+            const isLast = lastDrop && lastDrop.floor === f;
+            const drop = drops.find(d => d.floor === f);
+            return (
+              <div key={f} style={{
+                height: floorH,
+                display: "flex", alignItems: "center",
+                borderBottom: "1px solid rgba(255,255,255,.03)",
+                position: "relative",
+                transition: "background .3s",
+                background: isLast
+                  ? (lastDrop.broke ? "rgba(255,50,40,.08)" : "rgba(50,220,100,.06)")
+                  : "transparent",
+              }}>
+                <div style={{
+                  position: "absolute", left: -32, width: 28, textAlign: "right",
+                  fontSize: Math.min(10, floorH * .6),
+                  fontFamily: MN, fontWeight: drop ? 700 : 400,
+                  color: drop ? (drop.broke ? "#ff6060" : "#60e080") : "#3a4a6a",
+                  opacity: (f === 1 || f === floors || f % 10 === 0 || drop) ? 1 : 0,
+                }}>
+                  {(f === 1 || f === floors || f % 10 === 0 || drop) ? f : ""}
+                </div>
+                <div style={{
+                  display: "flex", gap: Math.max(4, floorH * .2),
+                  padding: `0 ${Math.max(8, floorH * .3)}px`,
+                  width: "100%", justifyContent: "center", alignItems: "center",
+                }}>
+                  {Array.from({ length: WINDOWS_PER_FLOOR }, (_, wi) => {
+                    const ww = Math.max(12, Math.min(22, floorH * .7));
+                    const wh = Math.max(8, Math.min(16, floorH * .55));
+                    return (
+                      <div key={wi} style={{
+                        width: ww, height: wh,
+                        background: wc.bg,
+                        border: `1px solid ${wc.border}`,
+                        borderRadius: 2,
+                        boxShadow: wc.glow !== "none" ? `0 0 ${status === "broke" || status === "safe" ? "8px" : "4px"} ${wc.glow}` : "none",
+                        transition: "all .4s",
+                        animation: isLast ? (lastDrop.broke ? "smash .5s ease-out" : "dropBall .4s ease-out") : "none",
+                        animationDelay: `${wi * .05}s`,
+                        position: "relative",
+                        overflow: "hidden",
+                      }}>
+                        {status !== "excluded" && (
+                          <div style={{
+                            position: "absolute", top: 1, left: 1,
+                            width: "40%", height: "30%",
+                            background: "rgba(255,255,255,.15)",
+                            borderRadius: "1px 0 2px 0",
+                          }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {drop && (
+                  <div style={{
+                    position: "absolute", right: -26,
+                    fontSize: Math.min(14, floorH * .7),
+                    animation: "fadeIn .3s ease-out",
+                  }}>
+                    {drop.broke ? "💥" : "✅"}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{
+          width: 220, display: "flex", flexDirection: "column", alignItems: "center",
+          position: "relative", zIndex: 2,
+        }}>
+          <div style={{
+            width: 200, height: 24,
+            background: "linear-gradient(180deg, #2a3258, #222848)",
+            borderLeft: "3px solid #2a3258",
+            borderRight: "3px solid #2a3258",
+            display: "flex", justifyContent: "center", alignItems: "flex-end",
+            paddingBottom: 2,
+          }}>
+            <div style={{
+              width: 20, height: 18,
+              background: "linear-gradient(180deg, #1a1a30, #0a0a18)",
+              border: "1px solid #3a4060",
+              borderBottom: "none",
+              borderRadius: "6px 6px 0 0",
+            }} />
+          </div>
+          <div style={{
+            width: 260, height: 8,
+            background: "linear-gradient(180deg, #2a3a28, #1a2a18)",
+            borderRadius: "0 0 4px 4px",
+          }} />
+        </div>
+      </div>
+
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        padding: "16px 12px 8px",
+        background: "linear-gradient(transparent, rgba(4,8,16,.9) 40%)",
+        display: "flex", justifyContent: "space-between",
+        fontSize: 10, color: "#4a5a7a", fontFamily: MN,
+        pointerEvents: "none",
+      }}>
+        <span>↕ {lo}–{hi}</span>
+        <span>{Math.max(0, hi - lo + 1)} этажей</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Result screen ─────────────────────────────────── */
+function Result({ drops, critical, floors, ballsLeft, onAgain }) {
+  const n = drops.length;
+  const opt = calcOptimal(floors, 2);
+  const won = isSolved(drops, critical);
+  const stratWorst = won ? evaluateStrategy(drops, floors) : 0;
+  const score = won ? Math.max(n, stratWorst) : 0;
+
+  let emoji, title, sub, grade, gc, explanation;
+  if (!won) {
+    emoji = "💀"; title = "Провал!"; sub = `Критический этаж был ${critical}`;
+    grade = "F"; gc = "#e02040";
+    explanation = "Оба шарика разбиты — этаж не найден.";
+  } else {
+    const r = score / opt;
+    if (r <= 1.0) { emoji = "🏆"; title = "Идеально!"; sub = "Оптимальная стратегия!"; grade = "S"; gc = "#ffd700"; }
+    else if (r <= 1.25) { emoji = "🔥"; title = "Отлично!"; sub = "Стратегия близка к оптимальной"; grade = "A"; gc = "#40c070"; }
+    else if (r <= 1.6) { emoji = "👍"; title = "Неплохо!"; sub = "Есть куда улучшить стратегию"; grade = "B"; gc = "#50a0f0"; }
+    else if (r <= 2.2) { emoji = "🤔"; title = "Можно лучше"; sub = "Стратегия далека от оптимума"; grade = "C"; gc = "#e0a040"; }
+    else { emoji = "😬"; title = "Слабовато..."; sub = "Попробуй совсем другой подход"; grade = "D"; gc = "#e04050"; }
+
+    if (n <= opt && score > opt)
+      explanation = `Повезло: ${n} бросков, но worst-case стратегии — ${stratWorst}. Оптимум: ${opt}.`;
+    else if (n <= opt)
+      explanation = `Стратегия оптимальна! Worst-case = ${stratWorst} = оптимум ${opt}.`;
+    else
+      explanation = `Worst-case стратегии: ${stratWorst}. Оптимум: ${opt}.`;
+  }
+
+  return (
+    <div style={{ animation: "slideUp .5s ease-out", textAlign: "center", padding: "16px 12px" }}>
+      <div style={{ fontSize: 56, marginBottom: 4 }}>{emoji}</div>
+      <div style={{
+        fontSize: 72, fontWeight: 900, color: gc,
+        fontFamily: "'Anybody',Impact,sans-serif", lineHeight: 1,
+        textShadow: `0 0 30px ${gc}44`,
+      }}>{grade}</div>
+      <h2 style={{ fontSize: 22, fontWeight: 800, color: "#eee", margin: "6px 0 2px", fontFamily: FN }}>{title}</h2>
+      <p style={{ color: "#7a7a9a", fontSize: 13, margin: "0 0 20px" }}>{sub}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, maxWidth: 320, margin: "0 auto 14px" }}>
+        {[
+          { l: "Твои броски", v: n, c: gc },
+          { l: "Оптимум", v: opt, c: "#ffd700", blur: true },
+          { l: "Worst-case", v: won ? stratWorst : "—", c: won ? (stratWorst <= opt ? "#ffd700" : "#e0a040") : "#666", blur: true },
+          { l: "Критический этаж", v: critical, c: "#50a0f0" },
+        ].map((s, i) => (
+          <div key={i} style={{
+            background: "#0e0e22", borderRadius: 11, padding: "10px 6px",
+            border: `1px solid ${s.c}18`, animation: `fadeIn .35s ease-out ${.08 + i * .07}s both`,
+          }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: s.c, fontFamily: MN, filter: s.blur ? "blur(6px)" : "none", transition: "filter .3s" }}>{s.v}</div>
+            <div style={{ fontSize: 9, color: "#5a5a7a", marginTop: 3 }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+      {won && (
+        <Spoiler label="Спойлер — нажми, чтобы раскрыть">
+          <div style={{
+            background: stratWorst <= opt ? "#ffd70008" : "#e0a04010", borderRadius: 11,
+            padding: "10px 14px", marginBottom: 14,
+            border: `1px solid ${stratWorst <= opt ? "#ffd70020" : "#e0a04020"}`,
+            animation: "fadeIn .35s ease-out .35s both", textAlign: "left",
+          }}>
+            <p style={{ fontSize: 12, color: stratWorst <= opt ? "#ddc050" : "#cca040", lineHeight: 1.5, margin: 0 }}>
+              {explanation}
+            </p>
+          </div>
+          <div style={{
+            background: "#0e0e22", borderRadius: 11, padding: 12, marginBottom: 14,
+            textAlign: "left", border: "1px solid #1e1e3a",
+            animation: "fadeIn .35s ease-out .45s both",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#ffd700", marginBottom: 5 }}>💡 Оптимальная стратегия</div>
+            <p style={{ fontSize: 11, color: "#888", lineHeight: 1.6, margin: 0 }}>
+              Для <b style={{ color: "#bbb" }}>{floors}</b> этажей оптимум — <b style={{ color: "#ffd700" }}>{opt}</b> бросков.
+              Шаг первого шарика убывает: {opt}, {opt - 1}, {opt - 2}…
+              Тогда worst-case одинаков для любого интервала.
+            </p>
+          </div>
+        </Spoiler>
+      )}
+      <div style={{
+        background: "#0e0e22", borderRadius: 11, padding: 12, marginBottom: 18,
+        textAlign: "left", border: "1px solid #1e1e3a",
+        animation: "fadeIn .35s ease-out .55s both",
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#50a0f0", marginBottom: 5 }}>📋 Твои броски</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {drops.map((d, i) => (
+            <span key={i} style={{
+              fontSize: 10, padding: "2px 7px", borderRadius: 5,
+              background: d.broke ? "#e0304018" : "#30b06018",
+              color: d.broke ? "#ff7070" : "#70e090", fontFamily: MN, fontWeight: 600,
+            }}>{d.floor}{d.broke ? "💥" : "✓"}</span>
+          ))}
+        </div>
+      </div>
+      <button onClick={onAgain} style={{
+        background: "linear-gradient(135deg,#4090f0,#6a50e8)", color: "#fff",
+        border: "none", borderRadius: 11, padding: "12px 36px",
+        fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: FN,
+        animation: "fadeIn .35s ease-out .65s both", transition: "transform .12s",
+      }}
+        onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"}
+        onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+      >Ещё раунд 🔄</button>
+    </div>
+  );
+}
+
+/* ── Main ──────────────────────────────────────────── */
+function App() {
+  const [round, setRound] = useState(newRound);
+  const [balls, setBalls] = useState(2);
+  const [drops, setDrops] = useState([]);
+  const [input, setInput] = useState("");
+  const [over, setOver] = useState(false);
+  const [last, setLast] = useState(null);
+  const [intro, setIntro] = useState(true);
+  const [rn, setRn] = useState(1);
+  const [hist, setHist] = useState([]);
+  const [shake, setShake] = useState(false);
+  const ref = useRef(null);
+
+  const { floors, critical } = round;
+  const lo = drops.reduce((m, d) => !d.broke ? Math.max(m, d.floor + 1) : m, 1);
+  const hi = drops.reduce((m, d) => d.broke ? Math.min(m, d.floor) : m, floors);
+
+  const restart = useCallback(() => {
+    setRound(newRound()); setBalls(2); setDrops([]); setInput("");
+    setOver(false); setLast(null); setRn(n => n + 1);
+  }, []);
+
+  const doDrop = useCallback(() => {
+    const f = parseInt(input);
+    if (isNaN(f) || f < 1 || f > floors) return;
+    if (drops.some(d => d.floor === f)) { setShake(true); setTimeout(() => setShake(false), 500); return; }
+    const broke = f >= critical;
+    const nd = [...drops, { floor: f, broke, n: drops.length + 1 }];
+    const nb = broke ? balls - 1 : balls;
+    setDrops(nd); setBalls(nb); setInput(""); setLast({ floor: f, broke });
+    const solved = isSolved(nd, critical);
+    if (solved) {
+      const opt = calcOptimal(floors, 2);
+      const sw = evaluateStrategy(nd, floors);
+      setHist(h => [...h, { floors, drops: nd.length, opt, won: true, score: Math.max(nd.length, sw) }]);
+      setTimeout(() => setOver(true), 450);
+    } else if (nb === 0) {
+      const opt = calcOptimal(floors, 2);
+      setHist(h => [...h, { floors, drops: nd.length, opt, won: false, score: 0 }]);
+      setTimeout(() => setOver(true), 450);
+    }
+    setTimeout(() => ref.current?.focus(), 80);
+  }, [input, drops, balls, critical, floors]);
+
+  if (intro) return (
+    <div style={{
+      minHeight: "100vh", background: "linear-gradient(180deg,#060614,#0e0e24)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: FN,
+    }}>
+      <style>{STYLES}</style>
+      <div style={{ maxWidth: 420, textAlign: "center", animation: "fadeIn .5s ease-out" }}>
+        <div style={{ marginBottom: 10 }}>
+          <Ball size={64} style={{ display: "inline-block" }} />
+          <Ball size={64} style={{ display: "inline-block", marginLeft: -6 }} />
+        </div>
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: "#eee", margin: "0 0 4px", lineHeight: 1.2 }}>
+          Два стеклянных шарика
+        </h1>
+        <p style={{ fontSize: 13, color: "#6a6a8a", lineHeight: 1.7, margin: "12px 0 22px" }}>
+          Здание с <b style={{ color: "#50a0f0" }}>30–100 этажами</b> (случайно каждый раунд).
+          У вас <b style={{ color: "#50a0f0" }}>2 шарика</b>.
+          <br /><br />
+          Есть <em>критический этаж</em> — с него шарики разбиваются.
+          Чтобы доказать ответ, нужно бросить с этого этажа (💥)
+          <b style={{ color: "#e0a040" }}> и </b> с этажа ниже (✓).
+          <br /><br />
+          Оценка идёт за <b style={{ color: "#e0a040" }}>качество стратегии</b>, а не везение.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 24 }}>
+          {[
+            { i: "🏢", t: "30–100 этажей" }, { i: "🔮", t: "2 шарика" },
+            { i: "✅", t: "Докажи ответ" }, { i: "🧠", t: "Стратегия > везение" },
+          ].map((x, j) => (
+            <div key={j} style={{ background: "#0e0e22", borderRadius: 10, padding: "10px 6px", border: "1px solid #1e1e3a" }}>
+              <div style={{ fontSize: 20 }}>{x.i}</div>
+              <div style={{ fontSize: 10, color: "#6a6a8a", marginTop: 3 }}>{x.t}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => setIntro(false)} style={{
+          background: "linear-gradient(135deg,#4090f0,#6a50e8)", color: "#fff",
+          border: "none", borderRadius: 12, padding: "14px 44px", fontSize: 17, fontWeight: 700,
+          cursor: "pointer", fontFamily: FN, animation: "pulse 2s ease-in-out infinite", transition: "transform .12s",
+        }}
+          onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"}
+          onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+        >Начать 🚀</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: "linear-gradient(180deg,#060614,#0e0e24)",
+      padding: 14, fontFamily: FN, display: "flex", flexDirection: "column", alignItems: "center",
+    }}>
+      <style>{STYLES}</style>
+      {over ? (
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <Result drops={drops} critical={critical} floors={floors} ballsLeft={balls} onAgain={restart} />
+          {hist.length > 1 && (
+            <div style={{
+              background: "#0e0e22", borderRadius: 11, padding: 12,
+              border: "1px solid #1e1e3a", marginTop: 8, animation: "fadeIn .35s ease-out .75s both",
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#888", marginBottom: 6 }}>📊 История</div>
+              {hist.map((h, i) => {
+                const r = h.won ? h.score / h.opt : 99;
+                const c = !h.won ? "#e06070" : r <= 1 ? "#ffd700" : r <= 1.25 ? "#40c070" : r <= 1.6 ? "#50a0f0" : r <= 2.2 ? "#e0a040" : "#e04050";
+                const g = !h.won ? "F" : r <= 1 ? "S" : r <= 1.25 ? "A" : r <= 1.6 ? "B" : r <= 2.2 ? "C" : "D";
+                return (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    fontSize: 10, fontFamily: MN, padding: "3px 6px", borderRadius: 5, marginBottom: 2,
+                    background: `${c}08`, color: c,
+                  }}>
+                    <span style={{ color: "#777" }}>#{i + 1} · {h.floors} эт.</span>
+                    <span>
+                      <span style={{ fontWeight: 700 }}>{g}</span>
+                      {h.won ? <>{` ${h.drops}шт `}<span style={{ filter: "blur(5px)" }}>{`wc:${h.score}/${h.opt}`}</span></> : " ✗"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, width: "100%", maxWidth: 400, flexWrap: "wrap" }}>
+            {[
+              {
+                l: "Шарики", content: (
+                  <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: 2 }}>
+                    {[0, 1].map(i => <Ball key={i} broken={i >= balls} size={20} />)}
+                  </div>
+                )
+              },
+              { l: "Бросок", v: drops.length + 1, c: "#50a0f0" },
+              { l: "Этажей", v: floors, c: "#999" },
+              { l: "Раунд", v: rn, c: "#6a50e8" },
+            ].map((s, i) => (
+              <div key={i} style={{
+                background: "#0a0a1e", borderRadius: 9, padding: "5px 10px",
+                flex: 1, textAlign: "center", border: "1px solid #1a1a32", minWidth: 60,
+              }}>
+                <div style={{ fontSize: 7, color: "#4a4a6a", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{s.l}</div>
+                {s.content || (
+                  <div style={{ fontSize: 18, fontWeight: 800, color: s.c, fontFamily: MN, marginTop: 1 }}>{s.v}</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <Building floors={floors} drops={drops} lo={lo} hi={hi} lastDrop={last} />
+
+          {last && (
+            <div style={{
+              marginTop: 8, padding: "6px 14px", borderRadius: 9,
+              background: last.broke ? "#e0304012" : "#30b06012",
+              border: `1px solid ${last.broke ? "#e0304030" : "#30b06030"}`,
+              color: last.broke ? "#ff7070" : "#70e090",
+              fontSize: 13, fontWeight: 600, animation: "fadeIn .25s ease-out",
+              textAlign: "center", maxWidth: 400, width: "100%",
+            }}>
+              {last.broke ? `💥 Этаж ${last.floor} — разбился!` : `✅ Этаж ${last.floor} — цел!`}
+            </div>
+          )}
+
+          <div style={{
+            marginTop: 8, display: "flex", gap: 6, maxWidth: 400, width: "100%",
+            animation: shake ? "shake .35s ease-out" : "none",
+          }}>
+            <input ref={ref} type="number" min={1} max={floors}
+              value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && doDrop()}
+              placeholder={`Этаж (${lo}–${hi})`} autoFocus
+              style={{
+                flex: 1, background: "#0a0a1e", border: "2px solid #1a1a32", borderRadius: 11,
+                padding: "11px 14px", color: "#eee", fontSize: 17, fontWeight: 700, fontFamily: MN,
+                outline: "none", textAlign: "center", transition: "border-color .15s",
+              }}
+              onFocus={e => e.target.style.borderColor = "#4090f0"}
+              onBlur={e => e.target.style.borderColor = "#1a1a32"}
+            />
+            <button onClick={doDrop}
+              disabled={!input || isNaN(parseInt(input)) || parseInt(input) < 1 || parseInt(input) > floors}
+              style={{
+                background: input ? "linear-gradient(135deg,#4090f0,#6a50e8)" : "#16162e",
+                color: input ? "#fff" : "#333", border: "none", borderRadius: 11, padding: "11px 20px",
+                fontSize: 14, fontWeight: 700, cursor: input ? "pointer" : "not-allowed",
+                fontFamily: FN, transition: "all .15s", whiteSpace: "nowrap",
+              }}
+            >Бросить 🔮</button>
+          </div>
+
+          {drops.length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 3, justifyContent: "center", maxWidth: 400 }}>
+              {drops.map((d, i) => (
+                <span key={i} style={{
+                  fontSize: 10, padding: "2px 6px", borderRadius: 5,
+                  background: d.broke ? "#e0304014" : "#30b06014",
+                  color: d.broke ? "#ff7070" : "#70e090", fontFamily: MN, fontWeight: 600,
+                }}>#{d.n}: {d.floor}{d.broke ? "💥" : "✓"}</span>
+              ))}
+            </div>
+          )}
+
+          {balls === 1 && (
+            <div style={{
+              marginTop: 8, padding: "6px 12px", borderRadius: 9,
+              background: "#e0a04010", border: "1px solid #e0a04028",
+              color: "#e0a040", fontSize: 11, fontWeight: 600,
+              textAlign: "center", maxWidth: 400, width: "100%", animation: "fadeIn .25s ease-out",
+            }}>⚠️ Последний шарик! Если разобьётся — проигрыш.</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
