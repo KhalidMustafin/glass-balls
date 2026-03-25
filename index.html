@@ -118,65 +118,69 @@ function Ball({ broken, size = 28, style }) {
 }
 
 /* ── Spoiler blur ───────────────────────────────────── */
-function Spoiler({ children, label = "Нажми, чтобы раскрыть" }) {
+function Spoiler({ children, label = "Нажми, чтобы раскрыть", revealed = false }) {
   const [clicked, setClicked] = useState(false);
+  const open = revealed;
   return (
     <div
-      onClick={() => setClicked(true)}
+      onClick={() => !open && setClicked(true)}
       style={{
-        position: "relative", cursor: "pointer",
+        position: "relative", cursor: open ? "default" : "pointer",
         borderRadius: 11, overflow: "hidden",
       }}
     >
       <div style={{
-        filter: "blur(8px)",
-        pointerEvents: "none",
-        userSelect: "none",
+        filter: open ? "none" : "blur(8px)",
+        pointerEvents: open ? "auto" : "none",
+        userSelect: open ? "auto" : "none",
+        transition: "filter .4s ease-out",
       }}>
         {children}
       </div>
-      <div style={{
-        position: "absolute", inset: 0,
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        background: "rgba(8,8,24,.4)",
-        borderRadius: 11, zIndex: 2,
-      }}>
-        {!clicked ? (
-          <>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>🔒</div>
-            <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, fontWeight: 600 }}>{label}</div>
-          </>
-        ) : (
-          <div style={{
-            animation: "fadeIn .3s ease-out",
-            textAlign: "center", padding: "0 16px",
-          }}>
-            <div style={{ fontSize: 22, marginBottom: 6 }}>⏳</div>
-            <div style={{ fontSize: 13, color: "#ccc", fontFamily: FN, fontWeight: 700, marginBottom: 6 }}>
-              Пока рано смотреть!
+      {!open && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "rgba(8,8,24,.4)",
+          borderRadius: 11, zIndex: 2,
+        }}>
+          {!clicked ? (
+            <>
+              <div style={{ fontSize: 18, marginBottom: 4 }}>🔒</div>
+              <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, fontWeight: 600 }}>{label}</div>
+            </>
+          ) : (
+            <div style={{
+              animation: "fadeIn .3s ease-out",
+              textAlign: "center", padding: "0 16px",
+            }}>
+              <div style={{ fontSize: 20, marginBottom: 6 }}>👇</div>
+              <div style={{ fontSize: 12, color: "#ccc", fontFamily: FN, fontWeight: 600, lineHeight: 1.5, marginBottom: 8 }}>
+                Числа можно раскрыть тумблером ниже
+              </div>
+              <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, lineHeight: 1.5 }}>
+                А разбор задачи и оптимальной стратегии — в канале
+              </div>
+              <a
+                href="https://t.me/mustafin_tech"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                style={{
+                  display: "inline-block", marginTop: 8,
+                  background: "linear-gradient(135deg,#2AABEE,#229ED9)",
+                  color: "#fff", fontSize: 12, fontWeight: 700,
+                  fontFamily: FN, padding: "8px 20px", borderRadius: 8,
+                  textDecoration: "none", transition: "transform .12s",
+                }}
+                onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"}
+                onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
+              >✈️ @mustafin_tech</a>
             </div>
-            <div style={{ fontSize: 11, color: "#8888aa", fontFamily: FN, lineHeight: 1.5 }}>
-              Ждите пост с решением в Telegram-канале
-            </div>
-            <a
-              href="https://t.me/mustafin_tech"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              style={{
-                display: "inline-block", marginTop: 8,
-                background: "linear-gradient(135deg,#2AABEE,#229ED9)",
-                color: "#fff", fontSize: 12, fontWeight: 700,
-                fontFamily: FN, padding: "8px 20px", borderRadius: 8,
-                textDecoration: "none", transition: "transform .12s",
-              }}
-              onMouseOver={e => e.currentTarget.style.transform = "scale(1.05)"}
-              onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
-            >✈️ @mustafin_tech</a>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -214,6 +218,7 @@ function Stars() {
           animationDelay: `${Math.random() * 3}s`,
         }} />
       ))}
+      {/* Moon */}
       <div style={{
         position: "absolute", right: "8%", top: "5%",
         width: 28, height: 28, borderRadius: "50%",
@@ -228,6 +233,7 @@ function Stars() {
 /* ── Building ──────────────────────────────────────── */
 function Building({ floors, drops, lo, hi, lastDrop }) {
   const floorH = Math.max(16, Math.min(36, 480 / floors));
+  const totalH = floors * floorH;
   const containerRef = useRef(null);
   const WINDOWS_PER_FLOOR = 5;
 
@@ -255,6 +261,8 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
       border: "1px solid #1a2a44",
     }}>
       <Stars />
+
+      {/* Scrollable area */}
       <div ref={containerRef} style={{
         position: "absolute", inset: 0,
         overflowY: "auto", overflowX: "hidden",
@@ -262,16 +270,20 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
         alignItems: "center",
         paddingTop: 20, paddingBottom: 40,
       }}>
+        {/* Roof / antenna */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: -2, position: "relative", zIndex: 2 }}>
+          {/* Antenna */}
           <div style={{ width: 2, height: 18, background: "linear-gradient(180deg, #ff3030, #666)", borderRadius: 1 }} />
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ff3030", marginTop: -2, boxShadow: "0 0 8px rgba(255,50,50,.6)" }} />
           <div style={{ height: 8, width: 2, background: "#555" }} />
+          {/* Roof peak */}
           <div style={{
             width: 0, height: 0,
             borderLeft: "100px solid transparent",
             borderRight: "100px solid transparent",
             borderBottom: "20px solid #2a3050",
           }} />
+          {/* Roof base */}
           <div style={{
             width: 220, height: 6,
             background: "linear-gradient(180deg, #3a4060, #2a3050)",
@@ -280,6 +292,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
           }} />
         </div>
 
+        {/* Building body */}
         <div style={{
           width: 200, position: "relative",
           background: "linear-gradient(90deg, #1a2040 0%, #222848 20%, #262e52 50%, #222848 80%, #1a2040 100%)",
@@ -287,12 +300,14 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
           borderLeft: "3px solid #2a3258",
           borderRight: "3px solid #2a3258",
         }}>
+          {/* Floors */}
           {Array.from({ length: floors }, (_, i) => {
             const f = floors - i;
             const status = getStatus(f);
             const wc = windowColor(status);
             const isLast = lastDrop && lastDrop.floor === f;
             const drop = drops.find(d => d.floor === f);
+
             return (
               <div key={f} style={{
                 height: floorH,
@@ -304,6 +319,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
                   ? (lastDrop.broke ? "rgba(255,50,40,.08)" : "rgba(50,220,100,.06)")
                   : "transparent",
               }}>
+                {/* Floor number label */}
                 <div style={{
                   position: "absolute", left: -32, width: 28, textAlign: "right",
                   fontSize: Math.min(10, floorH * .6),
@@ -313,6 +329,8 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
                 }}>
                   {(f === 1 || f === floors || f % 10 === 0 || drop) ? f : ""}
                 </div>
+
+                {/* Windows row */}
                 <div style={{
                   display: "flex", gap: Math.max(4, floorH * .2),
                   padding: `0 ${Math.max(8, floorH * .3)}px`,
@@ -334,6 +352,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
                         position: "relative",
                         overflow: "hidden",
                       }}>
+                        {/* Window reflection */}
                         {status !== "excluded" && (
                           <div style={{
                             position: "absolute", top: 1, left: 1,
@@ -346,6 +365,8 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
                     );
                   })}
                 </div>
+
+                {/* Status icon on right side */}
                 {drop && (
                   <div style={{
                     position: "absolute", right: -26,
@@ -360,10 +381,12 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
           })}
         </div>
 
+        {/* Ground / Entrance */}
         <div style={{
           width: 220, display: "flex", flexDirection: "column", alignItems: "center",
           position: "relative", zIndex: 2,
         }}>
+          {/* Ground floor facade */}
           <div style={{
             width: 200, height: 24,
             background: "linear-gradient(180deg, #2a3258, #222848)",
@@ -372,6 +395,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
             display: "flex", justifyContent: "center", alignItems: "flex-end",
             paddingBottom: 2,
           }}>
+            {/* Door */}
             <div style={{
               width: 20, height: 18,
               background: "linear-gradient(180deg, #1a1a30, #0a0a18)",
@@ -380,6 +404,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
               borderRadius: "6px 6px 0 0",
             }} />
           </div>
+          {/* Ground */}
           <div style={{
             width: 260, height: 8,
             background: "linear-gradient(180deg, #2a3a28, #1a2a18)",
@@ -388,6 +413,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
         </div>
       </div>
 
+      {/* Range overlay at bottom */}
       <div style={{
         position: "absolute", bottom: 0, left: 0, right: 0,
         padding: "16px 12px 8px",
@@ -404,7 +430,7 @@ function Building({ floors, drops, lo, hi, lastDrop }) {
 }
 
 /* ── Result screen ─────────────────────────────────── */
-function Result({ drops, critical, floors, ballsLeft, onAgain }) {
+function Result({ drops, critical, floors, ballsLeft, onAgain, showSpoilers, onToggleSpoilers }) {
   const n = drops.length;
   const opt = calcOptimal(floors, 2);
   const won = isSolved(drops, critical);
@@ -453,13 +479,13 @@ function Result({ drops, critical, floors, ballsLeft, onAgain }) {
             background: "#0e0e22", borderRadius: 11, padding: "10px 6px",
             border: `1px solid ${s.c}18`, animation: `fadeIn .35s ease-out ${.08 + i * .07}s both`,
           }}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: s.c, fontFamily: MN, filter: s.blur ? "blur(6px)" : "none", transition: "filter .3s" }}>{s.v}</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: s.c, fontFamily: MN, filter: s.blur && !showSpoilers ? "blur(6px)" : "none", transition: "filter .3s" }}>{s.v}</div>
             <div style={{ fontSize: 9, color: "#5a5a7a", marginTop: 3 }}>{s.l}</div>
           </div>
         ))}
       </div>
       {won && (
-        <Spoiler label="Спойлер — нажми, чтобы раскрыть">
+        <Spoiler label="Спойлер — нажми, чтобы раскрыть" revealed={showSpoilers}>
           <div style={{
             background: stratWorst <= opt ? "#ffd70008" : "#e0a04010", borderRadius: 11,
             padding: "10px 14px", marginBottom: 14,
@@ -500,6 +526,40 @@ function Result({ drops, critical, floors, ballsLeft, onAgain }) {
           ))}
         </div>
       </div>
+
+      {/* Spoiler toggle */}
+      <div
+        onClick={onToggleSpoilers}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 10, cursor: "pointer", marginBottom: 16, userSelect: "none",
+          animation: "fadeIn .35s ease-out .6s both",
+        }}
+      >
+        <div style={{
+          width: 44, height: 24, borderRadius: 12, padding: 2,
+          background: showSpoilers
+            ? "linear-gradient(135deg,#4090f0,#6a50e8)"
+            : "#1e1e3a",
+          transition: "background .25s",
+          display: "flex", alignItems: "center",
+        }}>
+          <div style={{
+            width: 20, height: 20, borderRadius: 10,
+            background: "#fff",
+            transform: showSpoilers ? "translateX(20px)" : "translateX(0)",
+            transition: "transform .25s",
+            boxShadow: "0 1px 4px rgba(0,0,0,.3)",
+          }} />
+        </div>
+        <span style={{
+          fontSize: 12, color: showSpoilers ? "#ccc" : "#5a5a7a",
+          fontFamily: FN, fontWeight: 600, transition: "color .25s",
+        }}>
+          {showSpoilers ? "🔓 Ответы раскрыты" : "🔒 Показать ответы"}
+        </span>
+      </div>
+
       <button onClick={onAgain} style={{
         background: "linear-gradient(135deg,#4090f0,#6a50e8)", color: "#fff",
         border: "none", borderRadius: 11, padding: "12px 36px",
@@ -525,6 +585,7 @@ function App() {
   const [rn, setRn] = useState(1);
   const [hist, setHist] = useState([]);
   const [shake, setShake] = useState(false);
+  const [spoilers, setSpoilers] = useState(false);
   const ref = useRef(null);
 
   const { floors, critical } = round;
@@ -613,7 +674,7 @@ function App() {
       <style>{STYLES}</style>
       {over ? (
         <div style={{ maxWidth: 420, width: "100%" }}>
-          <Result drops={drops} critical={critical} floors={floors} ballsLeft={balls} onAgain={restart} />
+          <Result drops={drops} critical={critical} floors={floors} ballsLeft={balls} onAgain={restart} showSpoilers={spoilers} onToggleSpoilers={() => setSpoilers(s => !s)} />
           {hist.length > 1 && (
             <div style={{
               background: "#0e0e22", borderRadius: 11, padding: 12,
@@ -633,7 +694,7 @@ function App() {
                     <span style={{ color: "#777" }}>#{i + 1} · {h.floors} эт.</span>
                     <span>
                       <span style={{ fontWeight: 700 }}>{g}</span>
-                      {h.won ? <>{` ${h.drops}шт `}<span style={{ filter: "blur(5px)" }}>{`wc:${h.score}/${h.opt}`}</span></> : " ✗"}
+                      {h.won ? <>{` ${h.drops}шт `}<span style={{ filter: spoilers ? "none" : "blur(5px)", transition: "filter .3s" }}>{`wc:${h.score}/${h.opt}`}</span></> : " ✗"}
                     </span>
                   </div>
                 );
